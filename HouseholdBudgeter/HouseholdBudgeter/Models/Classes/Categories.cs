@@ -9,6 +9,13 @@ namespace HouseholdBudgeter.Models
     {
         public int Id { get; set; }
         public string Name { get; set; }
-        public int HouseHold_Id { get; set; }
+        public int HouseholdId { get; set; }
+
+        public Categories()
+        {
+            this.Transactions = new HashSet<Transactions>();
+        }
+
+        public virtual ICollection<Transactions> Transactions { get; set; }
     }
 }

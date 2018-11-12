@@ -15,195 +15,190 @@ using Microsoft.AspNet.Identity.Owin;
 
 namespace HouseholdBudgeter.Controllers
 {
-    public class HouseholdsController : ApiController
+
+    [Authorize]
+    [RoutePrefix("api/household")]
+    public class HouseHoldController : ApiController
     {
-        private ApplicationDbContext db = new ApplicationDbContext();
-        private ApplicationUserManager _userManager;
+        private ApplicationDbContext _db = new ApplicationDbContext();
 
-        public ApplicationUserManager UserManager
-        {
-            get
-            {
-                return _userManager ?? Request.GetOwinContext().GetUserManager<ApplicationUserManager>();
-            }
-            private set
-            {
-                _userManager = value;
-            }
-        }
-
-        // GET: api/Households
-        public IQueryable<Households> GetHouseholds()
-        {
-            return db.Households;
-        }
-
-        // GET: api/Households/5
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult GetHouseholds(int id)
-        {
-            Households households = db.Households.Find(id);
-            if (households == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(households);
-        }
-
-        // PUT: api/Households/5
-        [ResponseType(typeof(void))]
-        public IHttpActionResult PutHouseholds(int id, Households households)
+        [Route("create")]
+        [HttpPost]
+        public IHttpActionResult Create(CreateHouseHoldBindingModel model)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            if (id != households.Id)
-            {
-                return BadRequest();
-            }
+            var houseHold = new HouseHold();
+            houseHold.CreatorId = User.Identity.GetUserId();
+            houseHold.Name = model.Name;
 
-            db.Entry(households).State = EntityState.Modified;
+            _db.Households.Add(houseHold);
+            _db.SaveChanges();
 
-            try
-            {
-                db.SaveChanges();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!HouseholdsExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            var houseHoldViewModel = new CreateHouseHoldViewModel();
+            houseHoldViewModel.Id = houseHold.Id;
+            houseHoldViewModel.Name = houseHold.Name;
 
-            return StatusCode(HttpStatusCode.NoContent);
+            return Ok(houseHoldViewModel);
         }
 
-        // POST: api/Households
-        [Authorize]
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult PostHouseholds(Households households)
+        [HttpPost]
+        [Route("invite")]
+        public IHttpActionResult Invite(InviteHouseHoldBindingModel model)
         {
-            var creatorName = User.Identity.Name;
-            var creatorId = User.Identity.GetUserId();
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
 
-            db.Households.Add(households);
-            
-            households.CreatorId = creatorId;
+            var userId = User.Identity.GetUserId();
 
-            db.SaveChanges();
+            if (!_db.Households.Any(p => p.Id == model.HouseHoldId && p.CreatorId == userId))
+            {
+                return BadRequest("Household not found");
+            }
 
-            return CreatedAtRoute("DefaultApi", new { id = households.Id }, households);
+            var invitedUser = _db.Users.FirstOrDefault(p => p.Email == model.Email);
+
+            if (invitedUser == null)
+            {
+                return BadRequest("User not found");
+            }
+
+            //TODO: Validations
+            // Validate if the invite has already been sent.
+            // Validate if the user already belongs to the household.
+            // Validate if we are not inviting ourself.
+
+            var invite = new HouseHoldInvite();
+            invite.InvitedDate = DateTime.Now;
+            invite.HouseHoldId = model.HouseHoldId;
+            invite.InvitedUserId = invitedUser.Id;
+
+            _db.Invites.Add(invite);
+            _db.SaveChanges();
+
+            var emailService = new PersonalEmailService();
+            var emailMessage = new System.Net.Mail.MailMessage("mywebapi@budget.com", invitedUser.Email);
+            emailMessage.Subject = "Hey, you got a new invite :)";
+            emailMessage.Body = "New invite pending, please check the website to accept";
+            emailService.Send(emailMessage);
+
+            return Ok("Invite created sucessfully");
         }
 
-        //POST api/Households/ViewUsers
+        [HttpPost]
+        [Route("join")]
+        public IHttpActionResult Join(JoinHouseHoldBindingModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var invite = _db.Invites.FirstOrDefault(p => p.Id == model.InviteId);
+
+            if (invite == null)
+            {
+                return BadRequest("Invite not found");
+            }
+
+            var userId = User.Identity.GetUserId();
+
+            if (invite.InvitedUserId != userId)
+            {
+                return BadRequest("Invite not found");
+            }
+
+            var houseHold = _db.Households.FirstOrDefault(p => p.Id == invite.HouseHoldId);
+            var user = _db.Users.FirstOrDefault(p => p.Id == userId);
+
+            houseHold.Members.Add(user);
+
+            _db.Invites.Remove(invite);
+
+            _db.SaveChanges();
+
+            return Ok("Invite processed sucessfully");
+        }
+
         [HttpGet]
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult ViewResidents(int Id)
+        [Route("view")]
+        public IHttpActionResult ViewMembers(int id)
         {
-            
-            var Household = db.Households.FirstOrDefault(u => u.Id == Id);
-            
-            return Ok(Household.Users.ToList());
-        }
-
-        //POST api/Households/InviteToHousehold
-        [ResponseType(typeof(Households))]
-        public async System.Threading.Tasks.Task<IHttpActionResult> InviteToHousehold(HouseholdInvites Invite)
-        {
-            
-            var CreatorHousehold = db.Households.FirstOrDefault(u => u.Id == Invite.Id);
-            
-            var userId = User.Identity.GetUserId();
-            var user = db.Users.Find(userId);
-            Households household = db.Households.Find(user.HouseholdId);
-
-            if (userId == CreatorHousehold.CreatorId)
+            if (!ModelState.IsValid)
             {
-            
-                var InvitedUser = db.Users.FirstOrDefault(u => u.Email == Invite.Email);
-                var userEmail = await UserManager.FindByNameAsync(Invite.Email);
-                await UserManager.SendEmailAsync(userEmail.Id, "Household Invite", "You have been invited to a new household. Please log in to join now.");
-                db.Invites.Add(Invite);
-                db.SaveChanges();
+                return BadRequest(ModelState);
             }
-            
-            return Ok(household);
-        }
-        
-        //POST api/Households/RemoveInvite
-        [Authorize]
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult RemoveInvite(int inviteId)
-        {
-            HouseholdInvites invite = db.Invites.Find(inviteId);
-            db.Invites.Remove(invite);
-            db.SaveChanges();
-            return Ok();
-        }
 
-        //POST api/Households/JoinHousehold
-        [Authorize]
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult JoinHousehold(int inviteId)
-        {
-            var userId = User.Identity.GetUserId();
-            var user = db.Users.Find(userId);
-            user.HouseholdId = db.Invites.Find(inviteId).HouseHoldId;
-            HouseholdInvites invite = db.Invites.Find(inviteId);
-            db.Invites.Remove(invite);
+            var houseHold = _db.Households
+                .Include(p => p.Members)
+                .Include(p => p.Creator)
+                .FirstOrDefault(p => p.Id == id);
 
-            db.SaveChanges();
-            return Ok();
-        }
-        
-        //POST api/Households/LeaveHousehold
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult LeaveHousehold(HouseholdInvites Invite)
-        {
-            var userId = User.Identity.GetUserId();
-            var user = db.Users.Find(userId);
-            user.HouseholdId = null;
-                        
-            db.SaveChanges();
-            return Ok();
-        }
-
-        // DELETE: api/Households/5
-        [ResponseType(typeof(Households))]
-        public IHttpActionResult DeleteHouseholds(int id)
-        {
-            Households households = db.Households.Find(id);
-            if (households == null)
+            if (houseHold == null)
             {
                 return NotFound();
             }
 
-            db.Households.Remove(households);
-            db.SaveChanges();
+            var userId = User.Identity.GetUserId();
 
-            return Ok(households);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
+            if (houseHold.CreatorId != userId && !houseHold.Members.Any(p => p.Id == userId))
             {
-                db.Dispose();
+                return NotFound();
             }
-            base.Dispose(disposing);
+
+            var houseHoldViewModel = new HouseHoldViewModel();
+            houseHoldViewModel.Name = houseHold.Name;
+
+            houseHoldViewModel.Members.Add(new HouseHoldMembersViewModel
+            {
+                Name = houseHold.Creator.UserName,
+                Email = houseHold.Creator.Email,
+                Id = houseHold.Creator.Id,
+                IsCreator = true
+            });
+
+            foreach (var member in houseHold.Members)
+            {
+                houseHoldViewModel.Members.Add(new HouseHoldMembersViewModel
+                {
+                    IsCreator = false,
+                    Email = member.Email,
+                    Id = member.Id,
+                    Name = member.UserName
+                });
+            }
+
+            return Ok(houseHoldViewModel);
         }
 
-        private bool HouseholdsExists(int id)
+        [HttpPost]
+        [Route("leave")]
+        public IHttpActionResult Leave(LeaveHouseHoldBindingModel model)
         {
-            return db.Households.Count(e => e.Id == id) > 0;
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var houseHold = _db.Households.FirstOrDefault(p => p.Id == model.HouseHoldId);
+
+            if (houseHold == null)
+            {
+                return NotFound();
+            }
+
+            var userId = User.Identity.GetUserId();
+            var user = _db.Users.FirstOrDefault(p => p.Id == userId);
+
+            houseHold.Members.Remove(user);
+            _db.SaveChanges();
+
+            return Ok("User has been removed from the household");
         }
     }
 }

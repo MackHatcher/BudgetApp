@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Entity;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using HouseholdBudgeter.Models.Classes;
@@ -12,13 +14,21 @@ namespace HouseholdBudgeter.Models
     // You can add profile data for the user by adding more properties to your ApplicationUser class, please visit https://go.microsoft.com/fwlink/?LinkID=317594 to learn more.
     public class ApplicationUser : IdentityUser
     {
-        public string FirstName { get; set; }
-        public string LastName { get; set; }
-        public string DisplayName { get; set; }
-        public int? HouseholdId { get; set; }
         
+        public ApplicationUser()
+        {
+            Transactions = new HashSet<Transactions>();
+            CreatedHouseholds = new HashSet<HouseHold>();
+            Households = new HashSet<HouseHold>();
+        }
 
-        public virtual ICollection<Households> Households { get; set; }
+        [InverseProperty("Members")]
+        public virtual ICollection<HouseHold> Households { get; set; }
+
+        [InverseProperty("Creator")]
+        public virtual ICollection<HouseHold> CreatedHouseholds { get; set; }
+
+        public virtual ICollection<Transactions> Transactions { get; set; }
 
         public async Task<ClaimsIdentity> GenerateUserIdentityAsync(UserManager<ApplicationUser> manager, string authenticationType)
         {
@@ -46,8 +56,23 @@ namespace HouseholdBudgeter.Models
         {
             return new ApplicationDbContext();
         }
-        public System.Data.Entity.DbSet<Households> Households { get; set; }
-        public System.Data.Entity.DbSet<HouseholdInvites> Invites { get; set; }
 
+        protected override void OnModelCreating(DbModelBuilder modelBuilder)
+        {
+            
+                base.OnModelCreating(modelBuilder);
+
+                modelBuilder.Entity<Transactions>()
+                    .HasRequired(p => p.Category)
+                    .WithMany(p => p.Transactions)
+                    .WillCascadeOnDelete(false);
+            }
+        
+
+        public DbSet<HouseHold> Households { get; set; }
+        public DbSet<HouseHoldInvite> Invites { get; set; }
+        public DbSet<Accounts> Accounts { get; set; }
+        public DbSet<Transactions> Transactions { get; set; }
+        public DbSet<Categories> Categories { get; set; }
     }
 }

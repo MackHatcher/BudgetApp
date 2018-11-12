@@ -26,10 +26,6 @@ namespace HouseholdBudgeter.Migrations
                 newUser = new ApplicationUser();
                 newUser.UserName = "user@budgetapp.com";
                 newUser.Email = "user@mybudgetapp.com";
-                newUser.FirstName = "New";
-                newUser.LastName = "User";
-                newUser.DisplayName = "New User";
-
                 userManager.Create(newUser, "Password-1");
             }
             else

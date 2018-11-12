@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 
-namespace HouseholdBudgeter.Models
+namespace HouseholdBudgeter.Models.Classes
 {
-    public class UserInviteViewModel
+    public class InviteHouseHoldBindingModel
     {
+        public int HouseHoldId { get; set; }
         public string Email { get; set; }
-        public int Id { get; set; }
     }
 }
