@@ -169,6 +169,7 @@ namespace HouseholdBudgeter.Controllers
 
             return Ok();
         }
+        
 
         // POST: /Account/ForgotPassword
         [AllowAnonymous]

@@ -46,6 +46,25 @@ namespace HouseholdBudgeter.Controllers
         }
 
         [HttpPost]
+        [Route("edit")]
+        public IHttpActionResult Edit(int id, EditHouseholdBindingModel household)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var houseHold = _db.Households.Where(h => h.Id == id).FirstOrDefault();
+            
+            houseHold.Name = household.Name;
+            
+            _db.SaveChanges();
+
+            return Ok();
+
+        }
+
+        [HttpPost]
         [Route("invite")]
         public IHttpActionResult Invite(InviteHouseHoldBindingModel model)
         {
@@ -90,6 +109,19 @@ namespace HouseholdBudgeter.Controllers
             return Ok("Invite created sucessfully");
         }
 
+        [HttpGet]
+        [Route("inviteList")]
+        public IHttpActionResult InviteList()
+        {
+            var userId = User.Identity.GetUserId();
+            var inviteList = _db.Invites.Where(i => i.InvitedUserId == userId)
+                .Select(i=> new ViewInviteListViewModel {
+                    InviteId = i.Id, Name = i.HouseHold.Name
+            }).ToList();
+
+            return Ok(inviteList);
+        }
+
         [HttpPost]
         [Route("join")]
         public IHttpActionResult Join(JoinHouseHoldBindingModel model)
@@ -126,6 +158,34 @@ namespace HouseholdBudgeter.Controllers
         }
 
         [HttpGet]
+        [Route("ViewHousehold")]
+        public IHttpActionResult ViewHousehold()
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var userId = User.Identity.GetUserId();
+            var householdList = _db.Households.Where(u => u.CreatorId == userId || u.Members.Any(m => m.Id == userId)).ToList();
+            var ViewHouseholdViewModel = new List<ViewHouseholdViewModel>();
+            if (householdList == null)
+            {
+                return NotFound();
+            }
+            foreach (var house in householdList)
+            {
+                ViewHouseholdViewModel.Add(new ViewHouseholdViewModel
+                {
+                    Name = house.Name,
+                    Id = house.Id,
+                    Members = house.Members.Count(),
+                });
+            }
+            
+            return Ok(ViewHouseholdViewModel);
+        }
+
+        [HttpGet]
         [Route("view")]
         public IHttpActionResult ViewMembers(int id)
         {
@@ -153,7 +213,7 @@ namespace HouseholdBudgeter.Controllers
 
             var houseHoldViewModel = new HouseHoldViewModel();
             houseHoldViewModel.Name = houseHold.Name;
-
+            
             houseHoldViewModel.Members.Add(new HouseHoldMembersViewModel
             {
                 Name = houseHold.Creator.UserName,

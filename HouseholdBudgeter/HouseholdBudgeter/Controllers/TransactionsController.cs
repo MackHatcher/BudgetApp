@@ -15,194 +15,220 @@ using Microsoft.AspNet.Identity;
 
 namespace HouseholdBudgeter.Controllers
 {
+
+    [Authorize]
+    [RoutePrefix("api/transactions")]
     public class TransactionsController : ApiController
     {
-        private ApplicationDbContext db = new ApplicationDbContext();
+        private ApplicationDbContext _db = new ApplicationDbContext();
 
-        // GET: api/Transactions
-        public IQueryable<Transactions> GetTransactions()
-        {
-            return db.Transactions;
-        }
-
-        // GET: api/Transactions/5
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult GetTransactions(int id)
-        {
-            Transactions transactions = db.Transactions.Find(id);
-            var Category = db.Categories.Where(c => c.Id == transactions.Id);
-            if (transactions == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(Category);
-        }
-
-        // PUT: api/Transactions/5
-        [ResponseType(typeof(void))]
-        public IHttpActionResult PutTransactions(int id, Transactions transactions)
+        [HttpPost]
+        [Route("create")]
+        public IHttpActionResult Create(CreateTransactionBindingModel model)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            if (id != transactions.Id)
+            var userId = User.Identity.GetUserId();
+
+            var account = _db.Accounts
+                .FirstOrDefault(p => p.Id == model.AccountId);
+
+            if (account == null)
             {
-                return BadRequest();
+                return BadRequest("Account doesn't exist");
             }
 
-            db.Entry(transactions).State = EntityState.Modified;
+            var houseHold = account.HouseHold;
 
-            try
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
             {
-                db.SaveChanges();
+                var transaction = new Transactions();
+                transaction.AccountId = model.AccountId;
+                transaction.Description = model.Description;
+                transaction.Date = model.Date;
+                transaction.Amount = model.Amount;
+                transaction.CategoryId = model.CategoryId;
+                transaction.IsVoided = false;
+                transaction.EnteredById = userId;
+
+                account.Balance += transaction.Amount;
+
+
+                _db.Transactions.Add(transaction);
+                _db.SaveChanges();
+
+                return Ok();
             }
-            catch (DbUpdateConcurrencyException)
+            else
             {
-                if (!TransactionsExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                return BadRequest("Not authorized");
             }
 
-            return StatusCode(HttpStatusCode.NoContent);
         }
 
-        // POST: api/Transactions
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult PostTransactions(Transactions transactions)
+        [HttpPost]
+        [Route("edit")]
+        public IHttpActionResult Edit(EditTransactionBindingModel model)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            db.Transactions.Add(transactions);
-            db.SaveChanges();
+            var userId = User.Identity.GetUserId();
 
-            return CreatedAtRoute("DefaultApi", new { id = transactions.Id }, transactions);
-        }
+            var transaction = _db.Transactions
+                .FirstOrDefault(p => p.Id == model.TransactionId);
 
-        //POST: api/Transactions/Create
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult CreateTransactions(TransactionsBindingModel transactions)
-        {
-            var id = User.Identity.GetUserId();
-            var newTransaction = new Transactions();
-            var test = db.Accounts.FirstOrDefault(e => e.Id == transactions.AccountId);
-            var household = newTransaction.Account.HouseHold;
-            HelperMethods helpers = new HelperMethods();
-
-            if (ModelState.IsValid)
+            if (transaction == null)
             {
-                var account = db.Accounts.FirstOrDefault(a => a.Id == transactions.AccountId);
-
-                if (newTransaction.CategoryId == null)
-                {
-                    transactions.CategoryId = household.Categories.FirstOrDefault(c => c.Name == "Miscellaneous").Id;
-                }
-
-                account.Balance = helpers.GetAccountBalance(newTransaction);
-                db.Entry(transactions).State = EntityState.Modified;
-                db.Transactions.Add(newTransaction);
-                db.SaveChanges();
-                
-                return Ok();
+                return BadRequest("Transaction doesn't exist");
             }
-            return Ok();
-        }
 
-        //POST: api/Transactions/Edit
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult EditTransactions(TransactionsBindingModel transactions)
-        {
-            var id = User.Identity.GetUserId();
-            var newTransaction = new Transactions();
-            HelperMethods helpers = new HelperMethods();
-            var test = db.Accounts.FirstOrDefault(e => e.Id == transactions.AccountId);
-            var household = newTransaction.Account.HouseHold;
+            var houseHold = transaction.Account.HouseHold;
 
-            if (ModelState.IsValid)
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
             {
-                var original = db.Transactions.FirstOrDefault(t => t.Id == transactions.Id);
-                var account = db.Accounts.FirstOrDefault(a => a.Id == original.AccountId);
+                transaction.Account.Balance -= transaction.Amount;
 
-                account.Balance = helpers.RevertAccountBalance(original);
-                account = db.Accounts.FirstOrDefault(a => a.Id == original.AccountId);
-                account.Balance = helpers.GetAccountBalance(newTransaction);
+                transaction.Description = model.Description;
+                transaction.Date = model.Date;
+                transaction.Amount = model.Amount;
+                transaction.CategoryId = model.CategoryId;
 
-                db.Entry(transactions).State = EntityState.Modified;
-                db.SaveChanges();
+                transaction.Account.Balance += transaction.Amount;
+
+                _db.SaveChanges();
 
                 return Ok();
             }
-            return Ok();
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
-        //POST: api/Transactions/View
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult ViewTransactions(int id)
+        [HttpPost]
+        [Route("delete/{id}")]
+        public IHttpActionResult Delete(int id)
         {
-            var Transaction = db.Transactions.ToList();
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
 
-            return Ok(Transaction);
-        }
-
-        //POST: api/Transactions/Void
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult VoidTransactions(int id)
-        {
-            Transactions transactions = db.Transactions.Find(id);
             var userId = User.Identity.GetUserId();
-            if (transactions == null)
-            {
-                return NotFound();
-            }
-            transactions.IsVoided = true;
-            db.SaveChanges();
 
-            return Ok(transactions);
+            var transaction = _db.Transactions
+                .FirstOrDefault(p => p.Id == id);
+
+            if (transaction == null)
+            {
+                return BadRequest("Category doesn't exist");
+            }
+
+            var houseHold = transaction.Account.HouseHold;
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                transaction.Account.Balance -= transaction.Amount;
+
+                _db.Transactions.Remove(transaction);
+
+                _db.SaveChanges();
+
+                return Ok();
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
-
-        // POST: api/Transactions/DELETE
-        [ResponseType(typeof(Transactions))]
-        public IHttpActionResult DeleteTransactions(int id)
+        [HttpGet]
+        [Route("view/{id}")]
+        public IHttpActionResult View(int id)
         {
-            Transactions transactions = db.Transactions.Find(id);
             var userId = User.Identity.GetUserId();
-            var account = db.Accounts.FirstOrDefault(a => a.Id == transactions.AccountId);
-            HelperMethods helpers = new HelperMethods();
-            if (transactions == null)
+
+            var account = _db.Accounts.FirstOrDefault(p => p.Id == id);
+
+            if (account == null)
             {
-                return NotFound();
+                return BadRequest("Account doesn't exist");
             }
-            account.Balance = helpers.RevertAccountBalance(transactions);
 
-            db.Transactions.Remove(transactions);
-            db.SaveChanges();
+            var houseHold = account.HouseHold;
 
-            return Ok(transactions);
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                var transactions = account.Transactions;
+
+                var categoryViewModel = transactions
+                    .Select(p => new TransactionViewModel
+                    {
+                        Id = p.Id,
+                        Amount = p.Amount,
+                        CategoryId = p.Category.Id,
+                        CategoryName = p.Category.Name,
+                        Date = p.Date,
+                        Description = p.Description,
+                        EnteredById = p.EnteredById,
+                        EnteredByName = p.EnteredBy.UserName,
+                        IsVoided = p.IsVoided
+                    }).ToList();
+
+                return Ok(categoryViewModel);
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
-        protected override void Dispose(bool disposing)
+        [HttpPost]
+        [Route("void/{id}")]
+        public IHttpActionResult Void(int id)
         {
-            if (disposing)
+            if (!ModelState.IsValid)
             {
-                db.Dispose();
+                return BadRequest(ModelState);
             }
-            base.Dispose(disposing);
-        }
 
-        private bool TransactionsExists(int id)
-        {
-            return db.Transactions.Count(e => e.Id == id) > 0;
+            var userId = User.Identity.GetUserId();
+
+            var transaction = _db.Transactions
+                .FirstOrDefault(p => p.Id == id);
+
+            if (transaction == null)
+            {
+                return BadRequest("Transaction doesn't exist");
+            }
+
+            var houseHold = transaction.Account.HouseHold;
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                transaction.Account.Balance -= transaction.Amount;
+                transaction.IsVoided = true;
+
+                _db.SaveChanges();
+
+                return Ok();
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
     }
+
 }

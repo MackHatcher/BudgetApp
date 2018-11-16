@@ -10,147 +10,158 @@ using System.Web.Http;
 using System.Web.Http.Description;
 using HouseholdBudgeter.Helpers;
 using HouseholdBudgeter.Models;
+using HouseholdBudgeter.Models.Classes;
+using Microsoft.AspNet.Identity;
 
 namespace HouseholdBudgeter.Controllers
 {
     public class CategoriesController : ApiController
     {
-        private ApplicationDbContext db = new ApplicationDbContext();
-
-        // GET: api/Categories
-        public IQueryable<Categories> GetCategories()
+        [Authorize]
+        [RoutePrefix("api/category")]
+        public class CategoryController : ApiController
         {
-            return db.Categories;
-        }
+            private ApplicationDbContext _db = new ApplicationDbContext();
 
-        [ResponseType(typeof(Categories))]
-        public IHttpActionResult GetCategories(Categories categories)
-        {
-            var Category = db.Categories.ToList();
-
-            return Ok(Category);
-        }
-
-        // PUT: api/Categories/5
-        [ResponseType(typeof(void))]
-        public IHttpActionResult PutCategories(int id, Categories categories)
-        {
-            if (!ModelState.IsValid)
+            [HttpPost]
+            [Route("create")]
+            public IHttpActionResult Create(CreateCategoryBindingModel model)
             {
-                return BadRequest(ModelState);
-            }
-
-            if (id != categories.Id)
-            {
-                return BadRequest();
-            }
-
-            db.Entry(categories).State = EntityState.Modified;
-
-            try
-            {
-                db.SaveChanges();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!CategoriesExists(id))
+                if (!ModelState.IsValid)
                 {
-                    return NotFound();
+                    return BadRequest(ModelState);
+                }
+
+                var userId = User.Identity.GetUserId();
+
+                var houseHold = _db.Households
+                    .FirstOrDefault(p => p.Id == model.HouseHoldId);
+
+                if (houseHold == null)
+                {
+                    return BadRequest("HouseHold doesn't exist");
+                }
+
+                if (houseHold.CreatorId == userId ||
+                    houseHold.Members.Any(p => p.Id == userId))
+                {
+                    var category = new Categories();
+                    category.Name = model.Name;
+                    category.HouseholdId = model.HouseHoldId;
+
+                    _db.Categories.Add(category);
+                    _db.SaveChanges();
+
+                    return Ok();
                 }
                 else
                 {
-                    throw;
+                    return BadRequest("Not authorized");
                 }
+
             }
 
-            return StatusCode(HttpStatusCode.NoContent);
-        }
-
-        //POST: api/Categories/Create
-        [ResponseType(typeof(Categories))]
-        public IHttpActionResult CreateCategories(Categories categories)
-        {
-            if (ModelState.IsValid)
+            [HttpPost]
+            [Route("edit")]
+            public IHttpActionResult Edit(EditCategoryBindingModel model)
             {
-                categories.HouseholdId = Convert.ToInt32(User.Identity.GetHouseholdId());
-
-                db.Categories.Add(categories);
-                db.SaveChanges();
-                return Ok(categories);
-            }
-            return Ok();
-        }
-
-
-        //POST: api/Categories/Edit
-        [ResponseType(typeof(Categories))]
-        public IHttpActionResult EditCategories(Categories categories)
-        {
-            if (ModelState.IsValid)
-            {
-                var original = db.Categories.AsNoTracking().FirstOrDefault(c => c.Id == categories.Id);
-
-                if (categories.Name != original.Name)
+                if (!ModelState.IsValid)
                 {
-                    var transactions = db.Transactions.Where(t => t.Category.Name == original.Name);
-                    foreach (var trans in transactions)
-                    {
-                        trans.Category.Name = categories.Name;
-                    }
+                    return BadRequest(ModelState);
+                }
+
+                var userId = User.Identity.GetUserId();
+
+                var category = _db.Categories
+                    .FirstOrDefault(p => p.Id == model.CategoryId);
+
+                if (category == null)
+                {
+                    return BadRequest("Category doesn't exist");
+                }
+
+                var houseHold = category.Household;
+
+                if (houseHold.CreatorId == userId ||
+                    houseHold.Members.Any(p => p.Id == userId))
+                {
+                    category.Name = model.Name;
+
+                    _db.SaveChanges();
+
+                    return Ok();
+                }
+                else
+                {
+                    return BadRequest("Not authorized");
                 }
             }
-            db.Entry(categories).State = EntityState.Modified;
-            db.SaveChanges();
-            return Ok(categories);
-        }
 
-
-        // POST: api/Categories
-        [ResponseType(typeof(Categories))]
-        public IHttpActionResult PostCategories(Categories categories)
-        {
-            if (!ModelState.IsValid)
+            [HttpPost]
+            [Route("delete/{id}")]
+            public IHttpActionResult Delete(int id)
             {
-                return BadRequest(ModelState);
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                var userId = User.Identity.GetUserId();
+
+                var category = _db.Categories
+                    .FirstOrDefault(p => p.Id == id);
+
+                if (category == null)
+                {
+                    return BadRequest("Category doesn't exist");
+                }
+
+                var houseHold = category.Household;
+
+                if (houseHold.CreatorId == userId ||
+                    houseHold.Members.Any(p => p.Id == userId))
+                {
+                    _db.Categories.Remove(category);
+
+                    _db.SaveChanges();
+
+                    return Ok();
+                }
+                else
+                {
+                    return BadRequest("Not authorized");
+                }
             }
 
-            db.Categories.Add(categories);
-            db.SaveChanges();
-
-            return CreatedAtRoute("DefaultApi", new { id = categories.Id }, categories);
-        }
-
-        // DELETE: api/Categories/5
-        [ResponseType(typeof(Categories))]
-        public IHttpActionResult DeleteCategories(int id)
-        {
-            Categories categories = db.Categories.Find(id);
-            if (categories == null)
+            [HttpGet]
+            [Route("view/{id}")]
+            public IHttpActionResult View(int id)
             {
-                return NotFound();
+                var userId = User.Identity.GetUserId();
+
+                var houseHold = _db.Households
+                    .FirstOrDefault(p => p.Id == id);
+
+                if (houseHold.CreatorId == userId ||
+                    houseHold.Members.Any(p => p.Id == userId))
+                {
+                    var categories = houseHold.Categories;
+
+                    var categoryViewModel = categories
+                        .Select(p => new CategoryViewModel
+                        {
+                            Id = p.Id,
+                            Name = p.Name
+                        }).ToList();
+
+                    return Ok(categoryViewModel);
+                }
+                else
+                {
+                    return BadRequest("Not authorized");
+                }
             }
-            var transactions = db.Transactions.Where(b => b.CategoryId == id);
-            var misc = db.Categories.FirstOrDefault(c => c.Name == "Miscellaneous").Id;
-            foreach (var transaction in transactions) transaction.CategoryId = misc;
-
-            db.Categories.Remove(categories);
-            db.SaveChanges();
-
-            return Ok(categories);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                db.Dispose();
-            }
-            base.Dispose(disposing);
-        }
-
-        private bool CategoriesExists(int id)
-        {
-            return db.Categories.Count(e => e.Id == id) > 0;
         }
     }
 }
+    

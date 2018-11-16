@@ -21,19 +21,32 @@ namespace HouseholdBudgeter.Migrations
 
             ApplicationUser newUser = null;
 
-            if (!context.Users.Any(p => p.UserName == "user@budgetapp.com"))
+            if (!context.Users.Any(p => p.UserName == "user@mybudgetapp.com"))
             {
                 newUser = new ApplicationUser();
-                newUser.UserName = "user@budgetapp.com";
+                newUser.UserName = "user@mybudgetapp.com";
                 newUser.Email = "user@mybudgetapp.com";
                 userManager.Create(newUser, "Password-1");
             }
             else
             {
-                newUser = context.Users.Where(p => p.UserName == "user@budgetapp.com")
+                newUser = context.Users.Where(p => p.UserName == "user@mybudgetapp.com")
                     .FirstOrDefault();
-            }            
-         
+            }
+
+            if (!context.Users.Any(p => p.UserName == "admin@mybudgetapp.com"))
+            {
+                newUser = new ApplicationUser();
+                newUser.UserName = "admin@mybudgetapp.com";
+                newUser.Email = "admin@mybudgetapp.com";
+                userManager.Create(newUser, "Password-1");
+            }
+            else
+            {
+                newUser = context.Users.Where(p => p.UserName == "admin@mybudgetapp.com")
+                    .FirstOrDefault();
+            }
+
         }
     }
 }
