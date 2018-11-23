@@ -61,6 +61,21 @@ namespace HouseholdBudgeter.Controllers
 
             }
 
+            [HttpGet]
+            [Route("view/getaccountlist/{id}")]
+            public IHttpActionResult ListAccounts(int id)
+            {
+                var accountList = _db.Accounts.Where(a => a.HouseHoldId == id)
+                    .Select(c => new AccountViewModel
+                    {
+                        Id = c.Id,
+                        Name = c.Name
+
+                    }).ToList();
+
+                return Ok(accountList);
+            }
+
             [HttpPost]
             [Route("edit")]
             public IHttpActionResult Edit(EditCategoryBindingModel model)
@@ -164,4 +179,3 @@ namespace HouseholdBudgeter.Controllers
         }
     }
 }
-    

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 
-namespace HouseholdBudgeter.Models
+namespace HouseholdBudgeter.Models.Classes
 {
     public class EditHouseholdBindingModel
     {

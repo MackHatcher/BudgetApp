@@ -260,5 +260,29 @@ namespace HouseholdBudgeter.Controllers
 
             return Ok("User has been removed from the household");
         }
+
+        [HttpPost]
+        [Route("edit")]
+        public IHttpActionResult Edit(EditHouseholdBindingModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var houseHold = _db.Households.FirstOrDefault(p => p.Id == model.Id);
+
+            if (houseHold == null)
+            {
+                return NotFound();
+            }
+
+            var userId = User.Identity.GetUserId();
+            var user = _db.Users.FirstOrDefault(p => p.Id == userId);
+            
+            _db.SaveChanges();
+
+            return Ok("User has been removed from the household");
+        }
     }
 }

@@ -10,6 +10,7 @@ using System.Web.Http;
 using System.Web.Http.Description;
 using HouseholdBudgeter.Helpers;
 using HouseholdBudgeter.Models;
+using HouseholdBudgeter.Models.Classes;
 using Microsoft.AspNet.Identity;
 
 namespace HouseholdBudgeter.Controllers
@@ -52,41 +53,6 @@ namespace HouseholdBudgeter.Controllers
             return Ok(BankAccounts);
         }
 
-        // PUT: api/Accounts/PutAccounts
-        [ResponseType(typeof(Accounts))]
-        public IHttpActionResult PutAccounts(int id, Accounts accounts)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            if (id != accounts.Id)
-            {
-                return BadRequest();
-            }
-
-            db.Entry(accounts).State = EntityState.Modified;
-
-            try
-            {
-                db.SaveChanges();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!AccountsExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
-
-            return StatusCode(HttpStatusCode.NoContent);
-        }
-
         // POST: api/Accounts/PostAccounts
         [ResponseType(typeof(Accounts))]
         public IHttpActionResult PostAccounts(Accounts accounts)
@@ -102,59 +68,132 @@ namespace HouseholdBudgeter.Controllers
             return CreatedAtRoute("DefaultApi", new { id = accounts.Id }, accounts);
         }
 
-        //POST: api/Accounts/Create
-        [ResponseType(typeof(Accounts))]
-        public IHttpActionResult CreateAccounts(Accounts bankAccount)
+        [HttpGet]
+        [Route("api/bankaccounts/view/{id}")]
+        public IHttpActionResult View(int id)
         {
-            if (ModelState.IsValid)
-            {
-                var houseId = Convert.ToInt32(User.Identity.GetHouseholdId());
-                var hh = db.Households.Find(houseId);
+            var userId = User.Identity.GetUserId();
 
-                bankAccount.HouseHoldId = Convert.ToInt32(User.Identity.GetHouseholdId());
+            var houseHold = db.Households
+                .FirstOrDefault(p => p.Id == id);
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                var accounts = houseHold.Accounts;
+
+                var bankAccountsViewModel = accounts
+                    .Select(p => new AccountViewModel()
+                    {
+                        Id = p.Id,
+                        Name = p.Name,
+                        Balance = p.Balance,
+                        HouseHolds = p.HouseHold.Name,
+                        NumberOfTransactions = p.Transactions.Count()
+                    }).ToList();
+
+                return Ok(bankAccountsViewModel);
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
+        }
+
+        //POST: api/Accounts/Create
+        
+        [ResponseType(typeof(Accounts))]
+        public IHttpActionResult Create(CreateAccountBindingModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userId = User.Identity.GetUserId();
+
+            var houseHold = db.Households
+                .FirstOrDefault(p => p.Id == model.HouseHoldId);
+
+            if (houseHold == null)
+            {
+                return BadRequest("HouseHold doesn't exist");
+            }
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                var bankAccount = new Accounts();
+                bankAccount.Name = model.Name;
+                bankAccount.HouseHoldId = model.HouseHoldId;
+                bankAccount.Balance = 0;
+
                 db.Accounts.Add(bankAccount);
                 db.SaveChanges();
 
-                Transactions originalTransaction = new Transactions()
-                {
-                    AccountId = bankAccount.Id,
-                    Category = hh.Categories.FirstOrDefault((m => m.Name == "Miscellaneous")),
-                    Amount = bankAccount.Balance,
-                    IsVoided = false
-                    
-                };
-
-                db.Transactions.Add(originalTransaction);
-                db.SaveChanges();
-
-                return Ok(bankAccount);
+                return Ok();
             }
-            return Ok();
-
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
+        [HttpGet]
+        [Route("view/getcategorylist/{id}")]
+        public IHttpActionResult ListCategories(int id)
+        {
+            var categoryList = db.Categories.Where(c => c.HouseholdId == id)
+                .Select(c => new CategoryViewModel
+                {
+                    Id = c.Id,
+                    Name = c.Name
+
+                }).ToList();
+
+            return Ok(categoryList);
+        }
+        
         //POST: api/Accounts/BalanceUpdate
         [ResponseType(typeof(Accounts))]
-        public IHttpActionResult Balance(Accounts bankAccount)
+        public IHttpActionResult Balance(int id)
         {
-            bankAccount.HouseHoldId = Convert.ToInt32(User.Identity.GetHouseholdId());
-
-            var trans = from t in db.Transactions
-                        where t.AccountId == bankAccount.Id
-                        where t.IsVoided == false
-                        select new { t.Amount, t.ReconAmount };
-            bankAccount.Balance = trans.ToList().Select(s => s.Amount).Sum();
-            bankAccount.ReconBalance = trans.ToList().Select(s => s.ReconAmount).Sum();
-
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid)
             {
-                db.Entry(bankAccount).State = EntityState.Modified;
-                db.SaveChanges();
-                return Ok(bankAccount);
+                return BadRequest(ModelState);
             }
 
-            return Ok(bankAccount);
+            var userId = User.Identity.GetUserId();
+
+            var bankAccount = db.Accounts
+                .FirstOrDefault(p => p.Id == id);
+
+            if (bankAccount == null)
+            {
+                return BadRequest("Bank account doesn't exist");
+            }
+
+            var houseHold = bankAccount.HouseHold;
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                var balance = bankAccount.Transactions
+                    .Where(p => !p.IsVoided)
+                    .Sum(p => p.Amount);
+
+                bankAccount.Balance = balance;
+
+                db.SaveChanges();
+
+                return Ok("The new balance is: " + balance);
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
+    
 
         //GET: api/Accounts/Edit
         [ResponseType(typeof(Accounts))]
@@ -166,32 +205,74 @@ namespace HouseholdBudgeter.Controllers
 
         //POST: api/Accounts/Edit
         [ResponseType(typeof(Accounts))]
-        public IHttpActionResult PostEditAccounts(Accounts bankAccount)
+        public IHttpActionResult PostEditAccounts(EditAccountBindingModel model)
         {
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid)
             {
-                db.Accounts.Attach(bankAccount);
-                db.Entry(bankAccount).Property("Name").IsModified = true;
-                db.SaveChanges();
-                return Ok(bankAccount);
+                return BadRequest(ModelState);
             }
-            return Ok(bankAccount);
+
+            var userId = User.Identity.GetUserId();
+
+            var bankAccount = db.Accounts
+                .FirstOrDefault(p => p.Id == model.BankAccountId);
+
+            if (bankAccount == null)
+            {
+                return BadRequest("Bank account doesn't exist");
+            }
+
+            var houseHold = bankAccount.HouseHold;
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                bankAccount.Name = model.Name;
+
+                db.SaveChanges();
+
+                return Ok();
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
         // POST: api/Accounts/Delete
         [ResponseType(typeof(Accounts))]
         public IHttpActionResult DeleteAccounts(int id)
         {
-            Accounts bankAccount = db.Accounts.Find(id);
-            if (bankAccount == null)
+            if (!ModelState.IsValid)
             {
-                return NotFound();
+                return BadRequest(ModelState);
             }
 
-            db.Accounts.Remove(bankAccount);
-            db.SaveChanges();
+            var userId = User.Identity.GetUserId();
 
-            return Ok(bankAccount);
+            var bankAccount = db.Accounts
+                .FirstOrDefault(p => p.Id == id);
+
+            if (bankAccount == null)
+            {
+                return BadRequest("Bank account doesn't exist");
+            }
+
+            var houseHold = bankAccount.HouseHold;
+
+            if (houseHold.CreatorId == userId ||
+                houseHold.Members.Any(p => p.Id == userId))
+            {
+                db.Accounts.Remove(bankAccount);
+
+                db.SaveChanges();
+
+                return Ok();
+            }
+            else
+            {
+                return BadRequest("Not authorized");
+            }
         }
 
         protected override void Dispose(bool disposing)

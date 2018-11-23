@@ -265,6 +265,7 @@
     <Compile Include="Models\Classes\CreateTransactionBindingModel.cs" />
     <Compile Include="Models\Classes\EditAccountBindingModel.cs" />
     <Compile Include="Models\Classes\EditCategoryBindingModel.cs" />
+    <Compile Include="Models\Classes\EditHouseholdBindingModel.cs" />
     <Compile Include="Models\Classes\EditTransactionBindingModel.cs" />
     <Compile Include="Models\Classes\HouseHoldInvite.cs" />
     <Compile Include="Models\Classes\Household.cs" />
@@ -280,7 +281,6 @@
     <Compile Include="Models\Classes\ViewHouseHoldMembersBindingModel.cs" />
     <Compile Include="Models\Classes\ViewHouseholdViewModel.cs" />
     <Compile Include="Models\Classes\ViewInviteListViewModel.cs" />
-    <Compile Include="Models\EditHouseholdBindingModel.cs" />
     <Compile Include="Models\IdentityModels.cs" />
     <Compile Include="Models\Classes\Transactions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
